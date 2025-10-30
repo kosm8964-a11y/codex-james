@@ -1,0 +1,9 @@
+{
+  "fuzzy_threshold": 87,
+  "alias_threshold": 90,
+  "english_ratio_threshold": 0.5,
+  "include_level_suffixes": true,
+  "output_mode": "plain",
+  "city_priority": ["普洱市", "景洪市"],
+  "fuzzy_levels": ["group", "village", "town"]
+}
