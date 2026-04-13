@@ -1,0 +1,232 @@
+-- 肥料在线订单管理系统 MVP 数据库结构
+-- MySQL 8.0+
+
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+CREATE TABLE IF NOT EXISTS customers (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  customer_code VARCHAR(64) NOT NULL UNIQUE,
+  customer_name VARCHAR(255) NOT NULL,
+  contact_name VARCHAR(128),
+  contact_phone VARCHAR(32),
+  credit_limit DECIMAL(18,2) DEFAULT 0,
+  status TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用,0=停用',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS suppliers (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  supplier_code VARCHAR(64) NOT NULL UNIQUE,
+  supplier_name VARCHAR(255) NOT NULL,
+  contact_name VARCHAR(128),
+  contact_phone VARCHAR(32),
+  status TINYINT NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS products (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  sku VARCHAR(64) NOT NULL UNIQUE,
+  product_name VARCHAR(255) NOT NULL,
+  specification VARCHAR(255),
+  tax_rate DECIMAL(5,2) NOT NULL DEFAULT 0,
+  status TINYINT NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS product_unit_rules (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  product_id BIGINT NOT NULL,
+  pack_to_ton_ratio DECIMAL(12,4) NOT NULL COMMENT '每吨对应包数',
+  min_pack_qty INT DEFAULT 0,
+  allow_decimal_ton TINYINT NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_product_unit_rules_product FOREIGN KEY (product_id) REFERENCES products(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS customer_product_prices (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  customer_id BIGINT NOT NULL,
+  product_id BIGINT NOT NULL,
+  unit_price DECIMAL(18,2) NOT NULL,
+  priority INT NOT NULL DEFAULT 100 COMMENT '数字越小优先级越高',
+  effective_from DATE,
+  effective_to DATE,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_customer_product_period (customer_id, product_id, effective_from, effective_to),
+  CONSTRAINT fk_cpp_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
+  CONSTRAINT fk_cpp_product FOREIGN KEY (product_id) REFERENCES products(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS orders (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_no VARCHAR(64) NOT NULL UNIQUE,
+  customer_id BIGINT NOT NULL,
+  order_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+  planned_delivery_date DATE,
+  subtotal_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  discount_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  freight_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  tax_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  total_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  receivable_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  received_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  created_by VARCHAR(64),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS order_items (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_id BIGINT NOT NULL,
+  product_id BIGINT NOT NULL,
+  qty_pack DECIMAL(18,4) NOT NULL DEFAULT 0,
+  qty_ton DECIMAL(18,4) NOT NULL DEFAULT 0,
+  unit_price DECIMAL(18,2) NOT NULL,
+  line_amount DECIMAL(18,2) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id),
+  CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS order_pdf_exports (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_id BIGINT NOT NULL,
+  file_url VARCHAR(1024) NOT NULL,
+  exported_by VARCHAR(64),
+  exported_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_pdf_order FOREIGN KEY (order_id) REFERENCES orders(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS shipment_records (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_id BIGINT NOT NULL,
+  shipment_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+  carrier_name VARCHAR(128),
+  tracking_no VARCHAR(128),
+  shipped_qty_pack DECIMAL(18,4) DEFAULT 0,
+  shipped_qty_ton DECIMAL(18,4) DEFAULT 0,
+  shipped_at DATETIME,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_shipment_order FOREIGN KEY (order_id) REFERENCES orders(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS finance_accounts (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  account_name VARCHAR(255) NOT NULL,
+  bank_name VARCHAR(255) NOT NULL,
+  bank_account_no VARCHAR(128) NOT NULL,
+  account_type VARCHAR(32) NOT NULL DEFAULT 'PUBLIC',
+  status TINYINT NOT NULL DEFAULT 1,
+  is_default TINYINT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS supplier_bank_accounts (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  supplier_id BIGINT NOT NULL,
+  account_name VARCHAR(255) NOT NULL,
+  bank_name VARCHAR(255) NOT NULL,
+  bank_account_no VARCHAR(128) NOT NULL,
+  is_default TINYINT NOT NULL DEFAULT 0,
+  status TINYINT NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_sba_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS finance_receivables (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_id BIGINT NOT NULL,
+  customer_id BIGINT NOT NULL,
+  amount_due DECIMAL(18,2) NOT NULL,
+  amount_received DECIMAL(18,2) NOT NULL DEFAULT 0,
+  due_date DATE,
+  status VARCHAR(32) NOT NULL DEFAULT 'OPEN',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_recv_order FOREIGN KEY (order_id) REFERENCES orders(id),
+  CONSTRAINT fk_recv_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS finance_payables (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  supplier_id BIGINT NOT NULL,
+  reference_no VARCHAR(64),
+  amount_due DECIMAL(18,2) NOT NULL,
+  amount_paid DECIMAL(18,2) NOT NULL DEFAULT 0,
+  due_date DATE,
+  status VARCHAR(32) NOT NULL DEFAULT 'OPEN',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_payable_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS finance_receipts (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  receivable_id BIGINT NOT NULL,
+  order_id BIGINT NOT NULL,
+  finance_account_id BIGINT NOT NULL,
+  receipt_amount DECIMAL(18,2) NOT NULL,
+  receipt_date DATE NOT NULL,
+  voucher_url VARCHAR(1024),
+  created_by VARCHAR(64),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_receipt_recv FOREIGN KEY (receivable_id) REFERENCES finance_receivables(id),
+  CONSTRAINT fk_receipt_order FOREIGN KEY (order_id) REFERENCES orders(id),
+  CONSTRAINT fk_receipt_account FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS finance_payments (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  payable_id BIGINT NOT NULL,
+  supplier_id BIGINT NOT NULL,
+  supplier_bank_account_id BIGINT NOT NULL,
+  payment_amount DECIMAL(18,2) NOT NULL,
+  payment_date DATE NOT NULL,
+  voucher_url VARCHAR(1024),
+  created_by VARCHAR(64),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_payment_payable FOREIGN KEY (payable_id) REFERENCES finance_payables(id),
+  CONSTRAINT fk_payment_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+  CONSTRAINT fk_payment_supplier_account FOREIGN KEY (supplier_bank_account_id) REFERENCES supplier_bank_accounts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cash_ledger (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  biz_type VARCHAR(32) NOT NULL COMMENT 'RECEIPT/PAYMENT',
+  biz_id BIGINT NOT NULL,
+  direction VARCHAR(16) NOT NULL COMMENT 'IN/OUT',
+  amount DECIMAL(18,2) NOT NULL,
+  occur_date DATE NOT NULL,
+  counterparty_type VARCHAR(16) NOT NULL COMMENT 'CUSTOMER/SUPPLIER',
+  counterparty_id BIGINT NOT NULL,
+  note VARCHAR(500),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_cash_ledger_date (occur_date),
+  INDEX idx_cash_ledger_direction (direction)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  module_name VARCHAR(64) NOT NULL,
+  biz_id BIGINT,
+  action VARCHAR(64) NOT NULL,
+  operator VARCHAR(64) NOT NULL,
+  before_data JSON,
+  after_data JSON,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_module_biz (module_name, biz_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET FOREIGN_KEY_CHECKS = 1;
