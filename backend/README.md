@@ -23,6 +23,9 @@
 - 用户角色管理：`GET /admin/users`、`POST /admin/users`、`POST /admin/users/{id}/roles`、`GET /admin/roles`
 - 用户状态管理：`POST /admin/users/{id}/status`（启用/禁用）
 - 密码加密存储（salt+hash）与登录失败锁定策略（连续失败 5 次锁定 15 分钟）
+- 管理员解锁：`POST /admin/users/{id}/unlock`
+- 用户改密：`POST /users/change-password`（校验旧密码）
+- 登录审计：成功/失败都会写入 `audit_logs`
 - 审计日志查询：`GET /audit/logs`
 - `POST /orders/{id}/export-pdf` 会真实生成 PDF 文件到 `backend/storage/contracts/`
 - 导出 PDF 时会自动带出默认收款账户信息

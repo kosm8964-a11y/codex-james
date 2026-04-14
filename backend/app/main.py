@@ -17,6 +17,7 @@ from .services import (
     mark_shipment_exception,
     create_finance_account,
     create_user,
+    change_password,
     create_order,
     create_supplier_bank_account,
     export_order_pdf,
@@ -35,6 +36,7 @@ from .services import (
     assign_user_roles,
     authenticate_user,
     set_user_status,
+    unlock_user,
 )
 
 app = FastAPI(title="Fertilizer OMS MVP API", version="0.4.0")
@@ -58,6 +60,11 @@ class UserRolesIn(BaseModel):
 
 class UserStatusIn(BaseModel):
     status: int
+
+
+class ChangePasswordIn(BaseModel):
+    oldPassword: str
+    newPassword: str
 
 
 def require_user(authorization: str | None = Header(default=None)) -> dict:
@@ -340,6 +347,26 @@ def admin_set_user_status(user_id: int, payload: UserStatusIn, _user: dict = Dep
         return set_user_status(user_id, payload.status)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/admin/users/{user_id}/unlock")
+def admin_unlock_user(user_id: int, _user: dict = Depends(require_roles("admin"))) -> dict:
+    try:
+        return unlock_user(user_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/users/change-password")
+def user_change_password(payload: ChangePasswordIn, user: dict = Depends(require_user)) -> dict:
+    try:
+        return change_password(
+            username=user["sub"],
+            old_password=payload.oldPassword,
+            new_password=payload.newPassword,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/finance/reconciliation/export-csv")

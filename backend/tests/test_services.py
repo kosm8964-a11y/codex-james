@@ -253,6 +253,10 @@ def test_user_lockout_and_disable_enable() -> None:
         except ValueError as e:
             assert "locked" in str(e)
 
+        services.unlock_user(u["id"])
+        auth = services.authenticate_user("lockuser", "abc123")
+        assert auth["username"] == "lockuser"
+
         services.set_user_status(u["id"], 0)
         try:
             services.authenticate_user("lockuser", "abc123")
@@ -261,3 +265,7 @@ def test_user_lockout_and_disable_enable() -> None:
             assert "disabled" in str(e)
 
         services.set_user_status(u["id"], 1)
+        changed = services.change_password("lockuser", "abc123", "newabc123")
+        assert changed["changed"] is True
+        auth2 = services.authenticate_user("lockuser", "newabc123")
+        assert auth2["username"] == "lockuser"

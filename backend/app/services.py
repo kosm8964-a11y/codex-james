@@ -137,12 +137,15 @@ def authenticate_user(username: str, password: str) -> dict:
     now = int(time.time())
     if not row:
         conn.close()
+        write_audit_log("auth", "login_failed", username, None, "user_not_found")
         raise ValueError("invalid credentials")
     if row["status"] != 1:
         conn.close()
+        write_audit_log("auth", "login_failed", username, row["id"], "user_disabled")
         raise ValueError("user disabled")
     if row["locked_until"] and row["locked_until"] > now:
         conn.close()
+        write_audit_log("auth", "login_failed", username, row["id"], "user_locked")
         raise ValueError("user temporarily locked")
     if not verify_password(password, row["password"]):
         attempts = int(row["failed_attempts"]) + 1
@@ -150,6 +153,7 @@ def authenticate_user(username: str, password: str) -> dict:
         conn.execute("UPDATE users SET failed_attempts=?, locked_until=? WHERE id=?", (0 if attempts >= 5 else attempts, locked_until, row["id"]))
         conn.commit()
         conn.close()
+        write_audit_log("auth", "login_failed", username, row["id"], f"bad_password_attempts={attempts}")
         raise ValueError("invalid credentials")
     conn.execute("UPDATE users SET failed_attempts=0, locked_until=0 WHERE id=?", (row["id"],))
     conn.commit()
@@ -159,6 +163,7 @@ def authenticate_user(username: str, password: str) -> dict:
     ).fetchall()
     conn.close()
     role_codes = [x["role_code"] for x in roles] or ["sales"]
+    write_audit_log("auth", "login_success", username, row["id"], ",".join(role_codes))
     return {"userId": row["id"], "username": row["username"], "roles": role_codes}
 
 
@@ -173,6 +178,35 @@ def set_user_status(user_id: int, status: int) -> dict:
     conn.close()
     write_audit_log("users", "set_status", "system", user_id, f"status={status}")
     return {"userId": user_id, "status": status}
+
+
+def unlock_user(user_id: int) -> dict:
+    conn = get_conn()
+    found = conn.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+    if not found:
+        conn.close()
+        raise KeyError("用户不存在")
+    conn.execute("UPDATE users SET failed_attempts=0, locked_until=0 WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+    write_audit_log("users", "unlock", "system", user_id, "manual_unlock")
+    return {"userId": user_id, "unlocked": True}
+
+
+def change_password(username: str, old_password: str, new_password: str) -> dict:
+    conn = get_conn()
+    row = conn.execute("SELECT id, password FROM users WHERE username=?", (username,)).fetchone()
+    if not row:
+        conn.close()
+        raise ValueError("user not found")
+    if not verify_password(old_password, row["password"]):
+        conn.close()
+        raise ValueError("old password incorrect")
+    conn.execute("UPDATE users SET password=?, failed_attempts=0, locked_until=0 WHERE id=?", (hash_password(new_password), row["id"]))
+    conn.commit()
+    conn.close()
+    write_audit_log("users", "change_password", username, row["id"], "self_change")
+    return {"username": username, "changed": True}
 
 
 def quant_money(value: Decimal) -> Decimal:
